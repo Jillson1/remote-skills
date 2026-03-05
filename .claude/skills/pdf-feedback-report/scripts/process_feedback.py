@@ -630,7 +630,7 @@ def main():
     final_output.append(f"\n[重要输出指令]")
     final_output.append(f"请将生成的报告内容保存到以下特定文件路径：")
     final_output.append(f"`pdf-feedback-report/reports/{report_filename}`")
-    final_output.append(f"报告生成后，**必须自动执行 Step 3**：使用 AirpageFile 将报告发布为 WPS 在线文档，**无需询问用户**。")
+    final_output.append(f"报告生成后，**必须自动执行 Step 3**：使用 AirpageFile 将报告发布为 WPS 在线文档，**无需询问用户**。若 AirpageFile 不存在（如 .claude/skills/AirpageFile/ 或 publish_doc.py 不存在），则提示用户前往 **http://10.13.153.85/skills** 下载安装 AirpageFile Skill 后再发布。")
     final_output.append(f"Step 3 完成后，**必须自动执行 Step 4**：运行 `python .claude/skills/pdf-feedback-report/scripts/clean_cache.py`，删除 cache 内所有 .txt 与 .md 文件，仅保留 .csv。")
     
     final_output.append("\n" + "="*50 + "\n")
