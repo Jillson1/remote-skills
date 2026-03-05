@@ -294,6 +294,51 @@ def fetch_online_sheet(url, sheet_id=1):
     return df
 
 
+def write_compare_stats(focus_df, compare_csv_path, stats_output_path, focus_total=None, compare_total=None):
+    """
+    按二级分类统计关注周与对比周数量并计算增长率，写入 UTF-8 文件，供报告生成使用。
+    避免控制台编码导致的中文乱码，统计结果统一落盘。
+    """
+    col = "二级分类"
+    if col not in focus_df.columns:
+        return False
+    try:
+        compare_df = pd.read_csv(compare_csv_path, encoding="utf-8")
+    except Exception:
+        try:
+            compare_df = pd.read_csv(compare_csv_path, encoding="utf-8-sig")
+        except Exception as e:
+            print(f"⚠️ 读取对比周 CSV 失败，跳过统计文件生成: {e}")
+            return False
+    if col not in compare_df.columns:
+        print(f"⚠️ 对比周 CSV 中无「{col}」列，跳过统计文件生成。")
+        return False
+    fc = focus_df[col].fillna("(未分类)").value_counts().sort_index()
+    cc = compare_df[col].fillna("(未分类)").value_counts().sort_index()
+    all_cats = sorted(set(fc.index) | set(cc.index))
+    n_focus = focus_total if focus_total is not None else len(focus_df)
+    n_compare = compare_total if compare_total is not None else len(compare_df)
+    total_rate = round((n_focus - n_compare) / n_compare * 100) if n_compare else 0
+    lines = [
+        "focus_total\t%d" % n_focus,
+        "compare_total\t%d" % n_compare,
+        "total_rate\t%d" % total_rate,
+    ]
+    for cat in all_cats:
+        f = int(fc.get(cat, 0))
+        c = int(cc.get(cat, 0))
+        rate = round((f - c) / c * 100) if c else (100 if f else 0)
+        lines.append("%s\t%d\t%d\t%d" % (cat, f, c, rate))
+    try:
+        with open(stats_output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        print(f"✅ 已生成对比统计文件（UTF-8）: {stats_output_path}")
+        return True
+    except Exception as e:
+        print(f"⚠️ 写入统计文件失败: {e}")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="从在线表格读取用户反馈数据并生成分析上下文。")
     
@@ -536,6 +581,8 @@ def main():
     if compare_csv_in_cache:
         final_output.append(f"**对比周日期**: {compare_week_range}")
         final_output.append(f"**说明**: 请读取关注周与对比周两个 CSV，按二级分类统计数量并计算增长率，填写报告中的「结论总结」与「结论对比表」。")
+        stats_file = os.path.join(cache_dir, "feedback_compare_stats.txt")
+        final_output.append(f"**统计结果文件（可选）**: 脚本已自动生成 `{stats_file}`（UTF-8），内含 focus_total、compare_total、total_rate 及各二级分类的关注周/对比周数量与增长率。可直接使用该文件填写「结论总结」与「结论对比表」，无需再解析 CSV 计算。")
     
     final_output.append(f"\n**[重要指令] 数据文件位置**:")
     final_output.append(f"> 关注周数据已清洗并保存为 CSV。请读取以下文件以获取关注周全量反馈：")
@@ -579,6 +626,17 @@ def main():
         print(f"成功创建 CSV 筛选结果: {csv_output}")
     except Exception as e:
         print(f"警告: 创建 CSV 文件失败: {e}")
+
+    # 8. 若存在对比周：自动生成按二级分类的统计结果（UTF-8 落盘，避免控制台中文乱码）
+    if compare_csv_in_cache and os.path.isfile(compare_csv_in_cache):
+        stats_path = os.path.join(cache_dir, "feedback_compare_stats.txt")
+        write_compare_stats(
+            final_df,
+            compare_csv_in_cache,
+            stats_path,
+            focus_total=len(filtered_df),
+            compare_total=None,
+        )
 
     print(f"下一步: 请使用此文件作为上下文，让 AI Agent 生成报告。")
     sys.stdout.flush()

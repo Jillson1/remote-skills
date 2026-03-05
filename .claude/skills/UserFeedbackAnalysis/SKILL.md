@@ -108,7 +108,7 @@ python UserFeedbackAnalysis/scripts/process_feedback.py \
 
 **输出目录**：生成的上下文文件、关注周/对比周 CSV 等临时文件均写入 **`UserFeedbackAnalysis/cache`** 目录。
 
-**按日期区间导出**：传入 `--date` 时，只导出关注周数据；同时传入 `--compare-date` 时会再导出对比周数据，两个 CSV 会复制到 `cache` 供后续分析使用。
+**按日期区间导出**：传入 `--date` 时，只导出关注周数据；同时传入 `--compare-date` 时会再导出对比周数据，两个 CSV 会复制到 `cache` 供后续分析使用。此时脚本会**自动**生成 `cache/feedback_compare_stats.txt`（UTF-8），内含按二级分类的统计与环比增长率，Step 2 可直接读取该文件填写「结论总结」与「结论对比表」，无需再跑统计命令或解析 CSV。
 
 ### 运行说明（Agent 执行 Step 1 时必读）
 
@@ -139,6 +139,7 @@ python UserFeedbackAnalysis/scripts/process_feedback.py \
     - (可选) 筛选包含指定 `keyword` 的记录（搜索内容、分类等字段）。
 3.  **Combine**: 读取 `prompts/analysis_prompt.md` 和 `templates/report.md`。
 4.  **Generate**: 生成包含指令、数据和模板的上下文文件。
+5.  **Compare Stats（当存在 `--compare-date` 时）**：自动按二级分类统计关注周与对比周数量并计算增长率，写入 `cache/feedback_compare_stats.txt`（UTF-8），避免控制台编码导致的中文乱码，供 Step 2 直接使用。
 
 ### Step 2: AI 分析与报告生成
 
