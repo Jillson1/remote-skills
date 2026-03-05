@@ -1,0 +1,12 @@
+# Skill 元数据（仅供网站展示使用，不会被 AI 加载到上下文）
+
+workflow:
+  name: "WPS 在线文档生成流程"
+  input: "Markdown 内容或文档 URL"
+  steps:
+    - "📝 解析 Markdown 内容"
+    - "🔄 转换为 WPS 文档格式"
+    - "📤 创建/更新在线文档"
+    - "🔗 开启分享链接"
+  output: "WPS 在线文档链接"
+

@@ -1,0 +1,9 @@
+{
+  "cli-user": {
+    "access_token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IjNiNTkyYWYwLTk5ODktNDRhOC1hMzQ3LTE4Yzc1MDQ4MTlmNCIsInR5cCI6IkpXVCJ9.eyJhaWQiOjEzODgyNDc2MjQsImF0cCI6InVzZXIiLCJhdHMiOiIyYWV5MTFEIiwiYnVpIjpmYWxzZSwiY2lkIjo0MTAwMDIwNywiY2xpIjoiQUsyMDI2MDIwNUtHUkZXWCIsImV4cCI6MTc3MjYxNjQwMywianN0IjpmYWxzZSwic3BpIjoxODAyNjc4OTQwfQ.fIsDO35wpxTzXHyOJdgGGYnh-GYhwygWkxWd8eIGqH7i2TE8BTEbeP_gm33iXb9IdYQ61-QsqsBte5kvxpWSUw",
+    "refresh_token": "kso_rt_mTY2xZFtHvvkzmWmXO6SN-9mQ64mRTeIIMdB9lDtQ0M.iG3JJULWpMrVwiI8DNNlR0m9_Ma7pl-QA9TtK7ypn4c.VeXk003",
+    "expires_in": 7200,
+    "token_type": "bearer",
+    "expiresAt": 1772616401711
+  }
+}

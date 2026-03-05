@@ -1,0 +1,40 @@
+---
+alwaysApply: true
+---
+
+# Available Skills
+
+<usage>
+When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
+
+Usage notes:
+- Invoke: Load the skill folder as context
+- Each skill invocation is stateless
+</usage>
+
+<available_skills>
+
+<skill>
+<name>AirsheetFile</name>
+<description>自动化生成和读写 WPS 在线表格 (.ksheet/.et/.xlsx)。支持创建表格、上传本地文件到云空间、读取内容、追加数据、更新选区和管理工作表。</description>
+<location>E:\codee\aiskills\.claude\skills\AirsheetFile/</location>
+</skill>
+
+<skill>
+<name>AirpageFile</name>
+<description>自动化生成 WPS 在线智能文档 (.otl)，支持 Markdown 内容转换与插入、自动开启分享，以及读取现有文档（支持 kdocs.cn/365.kdocs.cn）的详细内容。</description>
+<location>E:\codee\aiskills\.claude\skills\AirpageFile/</location>
+</skill>
+
+<skill>
+<name>skill-creator</name>
+<description>Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, workflows, or tool integrations.</description>
+<location>E:\codee\aiskills\.claude\skills\skill-creator/</location>
+</skill>
+
+<skill>
+<name>UserFeedbackAnalysis</name>
+<description>基于Excel源数据，自动过滤、分析并生成结构化的用户反馈周报。</description>
+<location>E:\codee\aiskills\.claude\skills\UserFeedbackAnalysis/</location>
+</skill>
+</available_skills>
