@@ -5,6 +5,7 @@ import os
 import sys
 import subprocess
 import io
+import shutil
 
 # Fix Windows console encoding for emoji/special chars
 if sys.platform == "win32" and hasattr(sys.stdout, "buffer"):
@@ -297,11 +298,12 @@ def main():
     parser = argparse.ArgumentParser(description="从在线表格读取用户反馈数据并生成分析上下文。")
     
     # 日期可选：未传则使用配置的「最近一周」或导出全量后再按配置过滤
-    parser.add_argument("--date", default=None, help="周报日期区间。例: 26.2.1-2.4(26年2月2.1-2.4)、25.5.3-5.8、5.3-5.8、2.1-2.4。不传则用配置 DEFAULT_WEEK_RANGE / DEFAULT_MONTH_PREFIX")
+    parser.add_argument("--date", default=None, help="关注周日期区间。例: 26-2.1-2.4、26.2.1-2.4。不传则用配置 DEFAULT_WEEK_RANGE / DEFAULT_MONTH_PREFIX")
+    parser.add_argument("--compare-date", default=None, help="对比周日期区间。例: 26-1.22-1.28。填写后将导出关注周与对比周两个 CSV 到 cache，并在上下文中说明以填写结论对比表")
     
     # 可选参数
     parser.add_argument("--url", default=None, help="在线表格 URL，不填则从配置文件读取")
-    parser.add_argument("--output", default="feedback_context.md", help="输出上下文文件 (默认: feedback_context.md)")
+    parser.add_argument("--output", default="feedback_context.md", help="输出上下文文件名 (默认写入 UserFeedbackAnalysis/cache/feedback_context.md)")
     parser.add_argument("--keyword", default=None, help="关键词筛选 (如 'AI讲解')")
     parser.add_argument("--sheet_id", type=int, default=None, help="工作表 ID，不填则从配置文件读取 (默认: 1)")
     parser.add_argument("--template_file", default=None, help="报告模板文件路径")
@@ -309,8 +311,12 @@ def main():
     
     args = parser.parse_args()
     
-    # Resolve paths
+    # Resolve paths：临时文件（上下文、CSV）统一写入 UserFeedbackAnalysis/cache
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cache_dir = os.path.join(base_dir, "cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    if not os.path.isabs(args.output):
+        args.output = os.path.join(cache_dir, os.path.basename(args.output) or "feedback_context.md")
     
     # Load config
     config = load_config()
@@ -355,9 +361,17 @@ def main():
         print("❌ 未提供 --date 且配置中无 DEFAULT_WEEK_RANGE，无法确定周报日期。")
         sys.exit(1)
     
-    print(f"筛选日期: {target_date}" + (f"（月份: {month_prefix}）" if month_prefix else ""))
+    compare_month_prefix = None
+    compare_week_range = None
+    if args.compare_date:
+        compare_month_prefix, compare_week_range = parse_date_range(args.compare_date)
+        if not compare_week_range:
+            compare_week_range = args.compare_date.strip()
+        print(f"对比周: {compare_week_range}" + (f"（月份: {compare_month_prefix}）" if compare_month_prefix else ""))
     
-    # 1. 优先使用 sheet_manager 按日期区间导出 Sheet1 到本地；失败则退化为在线读取
+    print(f"关注周: {target_date}" + (f"（月份: {month_prefix}）" if month_prefix else ""))
+    
+    # 1. 优先使用 sheet_manager 按日期区间导出关注周 Sheet1 到本地；失败则退化为在线读取
     df = None
     exported, csv_path = try_export_sheet_to_local(url, sheet_id, month_prefix=month_prefix, week_range=week_range)
     if exported and csv_path:
@@ -370,6 +384,24 @@ def main():
     if df is None:
         print("⚠️ 本地导出 Sheet 失败或未使用，退化为在线表格读取...")
         df = fetch_online_sheet(url, sheet_id)
+    
+    # 1.1 若填写了对比周：导出对比周并复制关注周/对比周两个 CSV 到 cache
+    focus_csv_in_cache = None
+    compare_csv_in_cache = None
+    if compare_week_range:
+        if exported and csv_path and os.path.isfile(csv_path):
+            safe_focus = target_date.replace("/", "_").replace(" ", "_").replace("\\", "_")
+            focus_csv_in_cache = os.path.join(cache_dir, f"focus_{safe_focus}.csv")
+            shutil.copy2(csv_path, focus_csv_in_cache)
+            print(f"已复制关注周 CSV 到: {focus_csv_in_cache}")
+        exported_compare, compare_csv_path = try_export_sheet_to_local(
+            url, sheet_id, month_prefix=compare_month_prefix, week_range=compare_week_range, use_existing_if_exists=True
+        )
+        if exported_compare and compare_csv_path and os.path.isfile(compare_csv_path):
+            safe_compare = compare_week_range.replace("/", "_").replace(" ", "_").replace("\\", "_")
+            compare_csv_in_cache = os.path.join(cache_dir, f"compare_{safe_compare}.csv")
+            shutil.copy2(compare_csv_path, compare_csv_in_cache)
+            print(f"已导出并复制对比周 CSV 到: {compare_csv_in_cache}")
         
     # 2. Filter Data（若导出时已按周报日期过滤，则不再重复过滤）
     if "周报日期" not in df.columns:
@@ -380,8 +412,8 @@ def main():
     df["周报日期"] = df["周报日期"].astype(str).str.strip()
     
     formatted_date = target_date.replace("-", "至")
-    report_filename = f"移动端WPS AI用户反馈分析报告（{formatted_date}）.md"
-    report_title = f"# 移动端 WPS AI 用户反馈分析报告 ({formatted_date})"
+    report_filename = f"PDF增值 用户反馈分析报告（{formatted_date}）.md"
+    report_title = f"# PDF增值 用户反馈分析报告 ({formatted_date})"
     csv_output = os.path.splitext(args.output)[0] + ".csv"
     
     if exported and (month_prefix or week_range):
@@ -471,8 +503,8 @@ def main():
             
         # Inject dynamic title
         # Replace the first line or known title with the specific date range title
-        if "# 移动端 WPS AI 用户反馈分析报告" in template_content:
-            template_content = template_content.replace("# 移动端 WPS AI 用户反馈分析报告", report_title)
+        if "# PDF增值 用户反馈分析报告" in template_content:
+            template_content = template_content.replace("# PDF增值 用户反馈分析报告", report_title)
     else:
         print(f"警告: 模板文件 '{args.template_file}' 未找到。")
 
@@ -499,18 +531,22 @@ def main():
     
     # Section 2: Data Source
     final_output.append("# 2. 数据源 (按日期筛选)")
-    final_output.append(f"**日期范围**: {target_date}")
-    final_output.append(f"**记录数量**: {len(filtered_df)}")
-    
-    # Calculate CSV path relative to workspace root if possible, or absolute path
-    # Here we use the relative path that will be accurate when running from project root
-    # csv_output is something like "UserFeedbackAnalysis/data/feedback_context.csv"
-    # We want to guide the AI to read this specific file.
+    final_output.append(f"**关注周日期**: {target_date}")
+    final_output.append(f"**关注周记录数量**: {len(filtered_df)}")
+    if compare_csv_in_cache:
+        final_output.append(f"**对比周日期**: {compare_week_range}")
+        final_output.append(f"**说明**: 请读取关注周与对比周两个 CSV，按二级分类统计数量并计算增长率，填写报告中的「结论总结」与「结论对比表」。")
     
     final_output.append(f"\n**[重要指令] 数据文件位置**:")
-    final_output.append(f"> 完整的数据已清洗并保存为 CSV 文件。请务必使用工具读取以下文件以获取所有反馈内容：")
+    final_output.append(f"> 关注周数据已清洗并保存为 CSV。请读取以下文件以获取关注周全量反馈：")
     final_output.append(f"> 文件路径: `{csv_output}`")
-    final_output.append(f"> \n> **注意**：不要依赖本文件中的预览数据（如果有），必须直接读取上述 CSV 文件进行全量分析。")
+    if compare_csv_in_cache:
+        final_output.append(f"\n> **对比周**：已导出对比周数据，请同时读取以下文件以计算增长率并填写「结论总结」与「结论对比表」：")
+        final_output.append(f"> 关注周 CSV（可同上）: `{csv_output}`")
+        final_output.append(f"> 对比周 CSV: `{compare_csv_in_cache}`")
+        final_output.append(f"\n> **结论填写要求**：根据两 CSV 按「二级分类」统计各功能点数量，计算 增长率 = (关注周数量−对比周数量)/对比周数量×100（取整）。正常波动范围默认 ±20%，超出则为异常、可在「关注人」列标注。")
+    else:
+        final_output.append(f"> \n> **注意**：不要依赖本文件中的预览数据（如果有），必须直接读取上述 CSV 文件进行全量分析。")
     
     # We can still include a small sample (head) just for quick glance, but not the full table
     final_output.append("\n**数据预览 (前 5 行)**:")
@@ -545,6 +581,8 @@ def main():
         print(f"警告: 创建 CSV 文件失败: {e}")
 
     print(f"下一步: 请使用此文件作为上下文，让 AI Agent 生成报告。")
+    sys.stdout.flush()
+    sys.stderr.flush()
 
 if __name__ == "__main__":
     main()
