@@ -2,7 +2,7 @@
 name: pdf-feedback-report
 description: "基于Excel源数据，自动过滤、分析并生成结构化的PDF用户反馈周报。"
 version: "2.1.0"
-author: "yushuyi@wps.cn"
+author: "liufuchen@wps.cn"
 scope: "internal"
 triggers:
   - "pdf-feedback-report"
