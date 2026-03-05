@@ -156,13 +156,32 @@ def _fetch_sheet_as_df(url, sheet_id):
         val = cell.get("cell_text") or cell.get("original_cell_value") or ""
         matrix[r][c] = val
     try:
-        if rows_count > 1:
-            headers = matrix[0]
-            data_rows = matrix[1:]
+        # 容错：源表可能第一行为空、第二行为表头，需识别真实表头行
+        header_row = _detect_header_row(matrix, rows_count)
+        if rows_count > header_row + 1:
+            headers = matrix[header_row]
+            data_rows = matrix[header_row + 1:]
             return pd.DataFrame(data_rows, columns=headers)
-        return pd.DataFrame(matrix)
+        if rows_count > 0:
+            return pd.DataFrame(matrix)
+        return None
     except Exception:
         return None
+
+
+def _detect_header_row(matrix, rows_count):
+    """
+    识别真实表头行索引。源表可能第一行为空、第二行为表头。
+    必需列名（至少出现其一即视为有效表头）：周报日期、二级分类、内容、序号。
+    返回 0 或 1（最多支持跳过一行空行）。
+    """
+    required_any = ("周报日期", "二级分类", "内容", "序号")
+    for row_idx in range(min(2, rows_count)):
+        row = matrix[row_idx]
+        row_str = [str(c).strip() for c in (row or [])]
+        if any(k in row_str for k in required_any):
+            return row_idx
+    return 0
 
 
 def try_export_sheet_to_local(url, sheet_id, timeout=600, use_existing_if_exists=True,
@@ -202,11 +221,17 @@ def try_export_sheet_to_local(url, sheet_id, timeout=600, use_existing_if_exists
         if col_month is not None and col_month in df.columns:
             df[col_month] = df[col_month].astype(str).str.strip()
             df = df[df[col_month].str.startswith(str(month_prefix))]
+        elif month_prefix:
+            # 指定了月份但未找到列，避免误导出全量
+            return False, None
     if week_range:
         col_week = _find_col(df, "周报日期", "周报日期")
         if col_week is not None and col_week in df.columns:
             df[col_week] = df[col_week].astype(str).str.strip()
             df = df[df[col_week] == str(week_range)]
+        else:
+            # 指定了周报日期但未找到「周报日期」列（例如首行为空导致表头错位），不导出全量
+            return False, None
     if len(df) == 0:
         return False, None
     try:
@@ -246,9 +271,11 @@ def try_export_sheet_to_local(url, sheet_id, timeout=600, use_existing_if_exists
 
 
 def load_df_from_local_csv(csv_path):
-    """从 sheet_manager 导出的本地 CSV 加载 DataFrame。若首行非表头则尝试第二行作为表头。"""
+    """
+    从本地 CSV 加载 DataFrame。容错：源表可能第一行为空、第二行为表头，
+    若首行不是有效表头（缺失「周报日期」等），则用第二行作为表头。
+    """
     df = pd.read_csv(csv_path, header=0, encoding="utf-8-sig", low_memory=False)
-    # 若第一行不是有效表头（列为 Unnamed 或缺失「周报日期」），尝试用第二行作表头
     if "周报日期" not in df.columns and len(df) > 1:
         df = pd.read_csv(csv_path, header=1, encoding="utf-8-sig", low_memory=False)
     return df
@@ -599,10 +626,12 @@ def main():
     final_output.append("# 1. ROLE & INSTRUCTIONS")
     final_output.append(system_prompt_content)
     
-    # Add Filename Instruction
+    # Add Filename Instruction & Auto-Publish
     final_output.append(f"\n[重要输出指令]")
     final_output.append(f"请将生成的报告内容保存到以下特定文件路径：")
     final_output.append(f"`pdf-feedback-report/reports/{report_filename}`")
+    final_output.append(f"报告生成后，**必须自动执行 Step 3**：使用 AirpageFile 将报告发布为 WPS 在线文档，**无需询问用户**。")
+    final_output.append(f"Step 3 完成后，**必须自动执行 Step 4**：运行 `python .claude/skills/pdf-feedback-report/scripts/clean_cache.py`，删除 cache 内所有 .txt 与 .md 文件，仅保留 .csv。")
     
     final_output.append("\n" + "="*50 + "\n")
     
