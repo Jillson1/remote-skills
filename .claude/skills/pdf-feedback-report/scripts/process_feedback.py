@@ -213,6 +213,35 @@ def try_export_sheet_to_local(url, sheet_id, timeout=600, use_existing_if_exists
         df.to_csv(expected_csv, index=False, encoding="utf-8-sig")
     except Exception:
         return False, None
+    # 写入导出摘要（UTF-8），便于校验关注周/对比周是否为不同区间
+    try:
+        def _find_col(dframe, name, default_name):
+            for c in dframe.columns:
+                if c and str(c).strip() == default_name:
+                    return c
+            for c in dframe.columns:
+                if name in str(c):
+                    return c
+            return None
+        col_week = _find_col(df, "周报日期", "周报日期")
+        col_month = _find_col(df, "月份", "月份")
+        summary_lines = [
+            f"week_range={week_range}",
+            f"month_prefix={month_prefix}",
+            f"row_count={len(df)}",
+        ]
+        if col_week is not None and col_week in df.columns:
+            uniq_week = df[col_week].dropna().astype(str).str.strip().unique()[:10].tolist()
+            summary_lines.append(f"unique_周报日期_sample={uniq_week}")
+        if col_month is not None and col_month in df.columns:
+            uniq_month = df[col_month].dropna().astype(str).str.strip().unique()[:10].tolist()
+            summary_lines.append(f"unique_月份_sample={uniq_month}")
+        _safe = (week_range or "full").replace("/", "_").replace("\\", "_").replace(" ", "_")
+        summary_path = os.path.join(os.path.dirname(expected_csv), "export_summary_" + _safe + ".txt")
+        with open(summary_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(summary_lines))
+    except Exception:
+        pass
     return True, expected_csv
 
 
@@ -223,6 +252,26 @@ def load_df_from_local_csv(csv_path):
     if "周报日期" not in df.columns and len(df) > 1:
         df = pd.read_csv(csv_path, header=1, encoding="utf-8-sig", low_memory=False)
     return df
+
+
+def _load_compare_csv_with_header_fallback(csv_path):
+    """
+    加载对比周 CSV，兼容首行为副表头、第二行为真实表头的情况。
+    优先保证能识别「二级分类」列，供 write_compare_stats 使用。
+    返回 (df, used_header_row)，used_header_row 为 0 或 1。
+    """
+    for encoding in ("utf-8-sig", "utf-8"):
+        try:
+            df0 = pd.read_csv(csv_path, header=0, encoding=encoding, low_memory=False)
+            if "二级分类" in df0.columns:
+                return df0, 0
+            if len(df0) > 0:
+                df1 = pd.read_csv(csv_path, header=1, encoding=encoding, low_memory=False)
+                if "二级分类" in df1.columns:
+                    return df1, 1
+        except Exception:
+            continue
+    return None, -1
 
 
 def load_config():
@@ -263,20 +312,18 @@ def write_compare_stats(focus_df, compare_csv_path, stats_output_path, focus_tot
     """
     按二级分类统计关注周与对比周数量并计算增长率，写入 UTF-8 文件，供报告生成使用。
     避免控制台编码导致的中文乱码，统计结果统一落盘。
+    对比周 CSV 若首行为副表头、第二行为真实表头，会自动尝试 header=1 以识别「二级分类」。
     """
     col = "二级分类"
     if col not in focus_df.columns:
         return False
-    try:
-        compare_df = pd.read_csv(compare_csv_path, encoding="utf-8")
-    except Exception:
+    compare_df, _ = _load_compare_csv_with_header_fallback(compare_csv_path)
+    if compare_df is None or col not in compare_df.columns:
         try:
-            compare_df = pd.read_csv(compare_csv_path, encoding="utf-8-sig")
-        except Exception as e:
-            print(f"⚠️ 读取对比周 CSV 失败，跳过统计文件生成: {e}")
-            return False
-    if col not in compare_df.columns:
-        print(f"⚠️ 对比周 CSV 中无「{col}」列，跳过统计文件生成。")
+            with open(stats_output_path, "w", encoding="utf-8") as f:
+                f.write("# 对比周 CSV 无法解析或缺少「二级分类」列，请检查 compare_*.csv 表头。\n")
+        except Exception:
+            pass
         return False
     fc = focus_df[col].fillna("(未分类)").value_counts().sort_index()
     cc = compare_df[col].fillna("(未分类)").value_counts().sort_index()
@@ -404,15 +451,35 @@ def main():
             focus_csv_in_cache = os.path.join(cache_dir, f"focus_{safe_focus}.csv")
             shutil.copy2(csv_path, focus_csv_in_cache)
             print(f"已复制关注周 CSV 到: {focus_csv_in_cache}")
+        # 对比周始终重新导出，避免误用关注周缓存导致两期数据一致
         exported_compare, compare_csv_path = try_export_sheet_to_local(
-            url, sheet_id, month_prefix=compare_month_prefix, week_range=compare_week_range, use_existing_if_exists=True
+            url, sheet_id, month_prefix=compare_month_prefix, week_range=compare_week_range, use_existing_if_exists=False
         )
         if exported_compare and compare_csv_path and os.path.isfile(compare_csv_path):
             safe_compare = compare_week_range.replace("/", "_").replace(" ", "_").replace("\\", "_")
             compare_csv_in_cache = os.path.join(cache_dir, f"compare_{safe_compare}.csv")
             shutil.copy2(compare_csv_path, compare_csv_in_cache)
             print(f"已导出并复制对比周 CSV 到: {compare_csv_in_cache}")
-        
+        # 校验两期数据是否不同（避免导出/缓存错误导致关注周与对比周一致）
+        if focus_csv_in_cache and compare_csv_in_cache and os.path.isfile(focus_csv_in_cache) and os.path.isfile(compare_csv_in_cache):
+            try:
+                focus_check = load_df_from_local_csv(focus_csv_in_cache)
+                compare_check, _ = _load_compare_csv_with_header_fallback(compare_csv_in_cache)
+                col_week = "周报日期" if "周报日期" in focus_check.columns else None
+                if col_week and compare_check is not None and col_week in compare_check.columns:
+                    u_f = set(focus_check[col_week].dropna().astype(str).str.strip().unique())
+                    u_c = set(compare_check[col_week].dropna().astype(str).str.strip().unique())
+                    n_f, n_c = len(focus_check), len(compare_check)
+                    verify_path = os.path.join(cache_dir, "export_verify.txt")
+                    with open(verify_path, "w", encoding="utf-8") as vf:
+                        vf.write(f"focus_rows={n_f}\tcompare_rows={n_c}\n")
+                        vf.write(f"focus_周报日期_unique={sorted(u_f)[:20]}\n")
+                        vf.write(f"compare_周报日期_unique={sorted(u_c)[:20]}\n")
+                        if n_f == n_c and u_f == u_c:
+                            vf.write("WARNING: 关注周与对比周行数及周报日期完全一致，请检查源表「周报日期」列或导出区间是否正确。\n")
+            except Exception:
+                pass
+
     # 2. Filter Data（若导出时已按周报日期过滤，则不再重复过滤）
     if "周报日期" not in df.columns:
         print("❌ 数据中未找到 '周报日期' 列。")
