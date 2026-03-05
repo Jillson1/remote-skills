@@ -1,15 +1,15 @@
 ---
 name: pdf-feedback-report
-description: "基于Excel源数据，自动过滤、分析并生成结构化的PDF用户反馈周报。"
+description: "过滤反馈数据源、分析并生成结构化的反馈扫查报告。"
 version: "2.1.0"
 author: "liufuchen@wps.cn"
 scope: "internal"
 triggers:
-  - "pdf-feedback-report"
-  - "analyze user feedback"
-  - "generate user feedback report"
+  - "pdf-feedback-report 关注日期：25-2.1-2.4 对比日期25.1.22-1.28"
+  - "report pdf feedback 关注日期：25-2.1-2.4 对比日期25.1.22-1.28"
+  - "generate pdf feedback report 关注日期：25-2.1-2.4 对比日期25.1.22-1.28"
   - "分析用户反馈"
-  - "生成用户反馈周报"
+  - "生成用户反馈报告"
 ---
 
 # PDF Feedback Report Skill
@@ -118,7 +118,10 @@ python pdf-feedback-report/scripts/process_feedback.py \
 
 为避免多余尝试与错误分析，执行 Step 1 时请严格遵守以下要求：
 
-1. **Shell 与命令语法**
+1. **执行前提醒用户**
+   - 在运行 `process_feedback.py` 导出 Sheet 数据**之前**，必须先向用户提示：「正在使用脚本导出数据，此过程预计耗时 3–5 分钟...」。
+
+2. **Shell 与命令语法**
    - 在 **Windows / PowerShell** 环境下，请使用 **PowerShell 兼容**写法，不要使用 `cd /d ... && python ...`（`&&` 在 PowerShell 中无效，会报错）。
    - **正确示例**（工作区根路径为 `e:\codee\aiskills` 时）：
      ```powershell
@@ -126,11 +129,11 @@ python pdf-feedback-report/scripts/process_feedback.py \
      ```
    - 或先 `Set-Location`（或 `cd`）到工作区根目录，再在同一会话中执行 `python <脚本相对路径> ...`。
 
-2. **控制台编码与 UTF-8 落盘**
+3. **控制台编码与 UTF-8 落盘**
    - `process_feedback.py` 已在脚本内部对 Windows 控制台做 UTF-8 输出处理；**所有统计与校验结果均写入 `cache` 下 UTF-8 文本文件**（如 `feedback_compare_stats.txt`、`export_summary_*.txt`、`export_verify.txt`），不依赖控制台编码。若控制台出现中文乱码，可直接查看上述文件进行分析。
    - 若 Agent 需要运行其它会输出中文的 Python 命令，可设置环境变量 `PYTHONIOENCODING=utf-8` 或将输出重定向到 UTF-8 文件。
 
-3. **必须等待脚本完成后再进行数据分析**
+4. **必须等待脚本完成后再进行数据分析**
    - Step 1 应**同步执行**并**等待** `process_feedback.py` 正常退出，建议超时时间为 **10 分钟（600 秒）**。
    - 在脚本**未成功结束**之前，**禁止**基于 `cache` 中的部分结果（例如仅存在 `focus_*.csv` 而尚无 `feedback_context.md` 或 `compare_*.csv`）进行数据分析或进入 Step 2。
    - 仅当脚本**成功退出**且已生成 `cache/feedback_context.md`（若指定了 `--compare-date` 则还应存在 `compare_*.csv`）后，方可执行 Step 2：读取上下文并生成报告。
