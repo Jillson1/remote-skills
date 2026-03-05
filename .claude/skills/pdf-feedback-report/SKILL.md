@@ -1,17 +1,18 @@
 ---
-name: user-feedback-analysis
-description: "基于Excel源数据，自动过滤、分析并生成结构化的用户反馈周报。"
+name: pdf-feedback-report
+description: "基于Excel源数据，自动过滤、分析并生成结构化的PDF用户反馈周报。"
 version: "2.1.0"
 author: "yushuyi@wps.cn"
 scope: "internal"
 triggers:
+  - "pdf-feedback-report"
   - "analyze user feedback"
   - "generate user feedback report"
   - "分析用户反馈"
   - "生成用户反馈周报"
 ---
 
-# User Feedback Analysis Skill
+# PDF Feedback Report Skill
 
 ## Overview
 
@@ -39,7 +40,7 @@ triggers:
 
 ## Configuration (配置文件)
 
-配置文件位于 `UserFeedbackAnalysis/config/config.properties`：
+配置文件位于 `pdf-feedback-report/config/config.properties`：
 
 ```properties
 [DEFAULT]
@@ -70,27 +71,27 @@ DEFAULT_SHEET_ID = 1
 
 **基础用法（使用配置文件中的 URL）**
 ```bash
-python UserFeedbackAnalysis/scripts/process_feedback.py --date "12.11-12.17"
+python pdf-feedback-report/scripts/process_feedback.py --date "12.11-12.17"
 ```
 
 **指定 URL（覆盖配置文件）**
 ```bash
-python UserFeedbackAnalysis/scripts/process_feedback.py \
+python pdf-feedback-report/scripts/process_feedback.py \
   --url "https://365.kdocs.cn/l/xxxxx" \
   --date "12.11-12.17"
 ```
 
 **关注周 + 对比周（导出两周数据用于环比结论）**
 ```bash
-python UserFeedbackAnalysis/scripts/process_feedback.py \
+python pdf-feedback-report/scripts/process_feedback.py \
   --date "26-2.1-2.4" \
   --compare-date "26-1.22-1.28"
 ```
-将导出关注周与对比周两个 CSV 到 `UserFeedbackAnalysis/cache`（如 `focus_2.1-2.4.csv`、`compare_1.22-1.28.csv`），上下文会指引 AI 填写「结论总结」与「结论对比表」。
+将导出关注周与对比周两个 CSV 到 `pdf-feedback-report/cache`（如 `focus_2.1-2.4.csv`、`compare_1.22-1.28.csv`），上下文会指引 AI 填写「结论总结」与「结论对比表」。
 
 **带关键词筛选（专项话题分析）**
 ```bash
-python UserFeedbackAnalysis/scripts/process_feedback.py \
+python pdf-feedback-report/scripts/process_feedback.py \
   --date "12.11-12.17" \
   --keyword "AI讲解" \
   --output feedback_context_topic.md
@@ -100,13 +101,13 @@ python UserFeedbackAnalysis/scripts/process_feedback.py \
 | 参数 | 必选 | 说明 |
 |------|------|------|
 | `--date` | 否 | **关注周**日期区间。示例：`26-2.1-2.4`、`26.2.1-2.4`。不传则用配置 `DEFAULT_WEEK_RANGE` / `DEFAULT_MONTH_PREFIX` |
-| `--compare-date` | 否 | **对比周**日期区间。示例：`26-1.22-1.28`。填写后将导出关注周与对比周两个 CSV 到 `UserFeedbackAnalysis/cache`，上下文中会说明以填写报告的「结论总结」与「结论对比表」 |
+| `--compare-date` | 否 | **对比周**日期区间。示例：`26-1.22-1.28`。填写后将导出关注周与对比周两个 CSV 到 `pdf-feedback-report/cache`，上下文中会说明以填写报告的「结论总结」与「结论对比表」 |
 | `--url` | 否 | 在线表格 URL，不填则从配置文件读取 |
 | `--keyword` | 否 | 关键词筛选 (如 `AI讲解`) |
-| `--output` | 否 | 输出上下文文件名 (默认写入 `UserFeedbackAnalysis/cache/feedback_context.md`) |
+| `--output` | 否 | 输出上下文文件名 (默认写入 `pdf-feedback-report/cache/feedback_context.md`) |
 | `--sheet_id` | 否 | 工作表 ID (默认从配置读取或 `1`) |
 
-**输出目录**：生成的上下文文件、关注周/对比周 CSV 等临时文件均写入 **`UserFeedbackAnalysis/cache`** 目录。
+**输出目录**：生成的上下文文件、关注周/对比周 CSV 等临时文件均写入 **`pdf-feedback-report/cache`** 目录。
 
 **按日期区间导出**：传入 `--date` 时，只导出关注周数据；同时传入 `--compare-date` 时会再导出对比周数据，两个 CSV 会复制到 `cache` 供后续分析使用。此时脚本会**自动**生成 `cache/feedback_compare_stats.txt`（UTF-8），内含按二级分类的统计与环比增长率，Step 2 可直接读取该文件填写「结论总结」与「结论对比表」，无需再跑统计命令或解析 CSV。
 
@@ -118,7 +119,7 @@ python UserFeedbackAnalysis/scripts/process_feedback.py \
    - 在 **Windows / PowerShell** 环境下，请使用 **PowerShell 兼容**写法，不要使用 `cd /d ... && python ...`（`&&` 在 PowerShell 中无效，会报错）。
    - **正确示例**（工作区根路径为 `e:\codee\aiskills` 时）：
      ```powershell
-     Set-Location e:\codee\aiskills; python .claude\skills\UserFeedbackAnalysis\scripts\process_feedback.py --date "26-2.1-2.4" --compare-date "26-1.22-1.28"
+     Set-Location e:\codee\aiskills; python .claude\skills\pdf-feedback-report\scripts\process_feedback.py --date "26-2.1-2.4" --compare-date "26-1.22-1.28"
      ```
    - 或先 `Set-Location`（或 `cd`）到工作区根目录，再在同一会话中执行 `python <脚本相对路径> ...`。
 

@@ -348,7 +348,7 @@ def main():
     
     # 可选参数
     parser.add_argument("--url", default=None, help="在线表格 URL，不填则从配置文件读取")
-    parser.add_argument("--output", default="feedback_context.md", help="输出上下文文件名 (默认写入 UserFeedbackAnalysis/cache/feedback_context.md)")
+    parser.add_argument("--output", default="feedback_context.md", help="输出上下文文件名 (默认写入 pdf-feedback-report/cache/feedback_context.md)")
     parser.add_argument("--keyword", default=None, help="关键词筛选 (如 'AI讲解')")
     parser.add_argument("--sheet_id", type=int, default=None, help="工作表 ID，不填则从配置文件读取 (默认: 1)")
     parser.add_argument("--template_file", default=None, help="报告模板文件路径")
@@ -356,7 +356,7 @@ def main():
     
     args = parser.parse_args()
     
-    # Resolve paths：临时文件（上下文、CSV）统一写入 UserFeedbackAnalysis/cache
+    # Resolve paths：临时文件（上下文、CSV）统一写入 pdf-feedback-report/cache
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     cache_dir = os.path.join(base_dir, "cache")
     os.makedirs(cache_dir, exist_ok=True)
@@ -570,7 +570,7 @@ def main():
     # Add Filename Instruction
     final_output.append(f"\n[重要输出指令]")
     final_output.append(f"请将生成的报告内容保存到以下特定文件路径：")
-    final_output.append(f"`UserFeedbackAnalysis/reports/{report_filename}`")
+    final_output.append(f"`pdf-feedback-report/reports/{report_filename}`")
     
     final_output.append("\n" + "="*50 + "\n")
     
