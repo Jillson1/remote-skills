@@ -19,8 +19,8 @@ triggers:
 此 Skill 旨在自动化处理 WPS AI 的用户反馈分析流程。它将原始反馈数据转换为结构化的洞察报告，大幅减少人工筛选和总结的时间。
 
 核心能力包括：
-1.  **数据获取**：优先使用 `AirsheetFile` 的 `sheet_manager.py` 将 Sheet1 导出到本地 CSV 再解析；若导出失败则退化为在线表格 API 直接读取。
-2.  **数据过滤**：自动根据"周报日期"从海量反馈中提取特定时间段的数据。
+1.  **数据获取**：使用本 Skill 内置的 WPS 在线表格客户端，将数据源 Sheet 导出到本地 CSV 或直接读取；无需依赖其他 Skill。
+2.  **数据过滤**：自动根据「周报日期」从海量反馈中提取特定时间段的数据。
 3.  **上下文组装**：智能结合分析提示词（Prompts）、原始数据和报告模板。
 4.  **报告生成**：生成符合周报规范的 Markdown 格式报告，包含核心数据和 Top 问题（注：严格遵循客观陈述原则，无需包含改进建议）。
 
@@ -33,10 +33,10 @@ triggers:
     tabulate>=0.9.0
     requests>=2.28.0
     ```
-2.  依赖 `AirsheetFile` 模块，确保 `AirsheetFile/config/airsheet.properties` 已正确配置：
+2.  在 `pdf-feedback-report/config/config.properties` 中配置 WPS OpenAPI（用于读取在线表格）：
     - ACCESS_KEY
     - SECRET_KEY
-    - DEFAULT_DRIVE_ID
+    - DEFAULT_DRIVE_ID（可选，部分接口需要）
 
 ## Configuration (配置文件)
 
@@ -133,8 +133,8 @@ python pdf-feedback-report/scripts/process_feedback.py \
    - 仅当脚本**成功退出**且已生成 `cache/feedback_context.md`（若指定了 `--compare-date` 则还应存在 `compare_*.csv`）后，方可执行 Step 2：读取上下文并生成报告。
 
 **Script Actions**:
-1.  **Export then Read (优先)**：先调用 `AirsheetFile/scripts/sheet_manager.py get_range` 将 Sheet1 导出到本地 CSV；若导出成功则从该本地文件解析数据。
-2.  **Fallback Read**：若导出 Sheet 失败（超时、无权限、脚本缺失等），则退化为**在线表格读取**（通过 WpsClient API 直接拉取数据）。
+1.  **Export then Read (优先)**：使用本 Skill 内置的 WPS 客户端将 Sheet1 按日期区间导出到 `pdf-feedback-report/cache` 下的 CSV，并从该文件解析数据。
+2.  **Fallback Read**：若导出失败（未配置鉴权、网络异常等），则退化为**在线表格 API 直接拉取**（同一内置客户端）。
 3.  **Filter**: 
     - 筛选 `周报日期` == 指定日期范围。
     - (可选) 筛选包含指定 `keyword` 的记录（搜索内容、分类等字段）。

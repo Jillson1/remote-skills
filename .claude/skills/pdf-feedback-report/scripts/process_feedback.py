@@ -3,7 +3,6 @@ import argparse
 import configparser
 import os
 import sys
-import subprocess
 import io
 import shutil
 
@@ -96,59 +95,125 @@ def parse_date_range(date_str):
     return None, s
 
 
+def _fetch_sheet_as_df(url, sheet_id):
+    """
+    使用本 skill 内置的 WpsClient 从在线表格读取全量数据并转为 DataFrame。
+    若未配置 WPS 鉴权或请求失败则返回 None。
+    """
+    try:
+        from wps_client import WpsClient
+    except ImportError:
+        return None
+    client = WpsClient()
+    if not getattr(client, "access_key", "") or not getattr(client, "secret_key", ""):
+        return None
+    file_id = client.resolve_file_id(url)
+    if not file_id:
+        return None
+    try:
+        client.get_token()
+    except Exception:
+        return None
+    probe_row_limit = 10
+    probe_col_limit = 100
+    max_col = 0
+    res = client.get_range_data(file_id, sheet_id, 0, probe_row_limit, 0, probe_col_limit, file_type="auto")
+    if not res or res.get("code") != 0:
+        return None
+    data = res.get("data", {}).get("range_data", [])
+    if data:
+        for cell in data:
+            if cell.get("cell_text") or str(cell.get("original_cell_value", "")):
+                max_col = max(max_col, cell.get("col_from", 0))
+    # 分页读取
+    all_cells = []
+    batch_size = 1000
+    current_row = 0
+    while True:
+        res = client.get_range_data(file_id, sheet_id, current_row, current_row + batch_size - 1, 0, max_col, file_type="auto")
+        if not res or res.get("code") != 0:
+            break
+        batch_data = res.get("data", {}).get("range_data", [])
+        has_content = any(cell.get("cell_text") or str(cell.get("original_cell_value", "")) for cell in batch_data)
+        if not batch_data or not has_content:
+            break
+        all_cells.extend(batch_data)
+        current_row += batch_size
+        if current_row > 100000:
+            break
+    if not all_cells:
+        return None
+    min_r = min(c.get("row_from", 0) for c in all_cells)
+    max_r = max(c.get("row_from", 0) for c in all_cells)
+    min_c = min(c.get("col_from", 0) for c in all_cells)
+    max_c = max(c.get("col_from", 0) for c in all_cells)
+    rows_count = max_r - min_r + 1
+    cols_count = max_c - min_c + 1
+    matrix = [["" for _ in range(cols_count)] for _ in range(rows_count)]
+    for cell in all_cells:
+        r = cell.get("row_from", 0) - min_r
+        c = cell.get("col_from", 0) - min_c
+        val = cell.get("cell_text") or cell.get("original_cell_value") or ""
+        matrix[r][c] = val
+    try:
+        if rows_count > 1:
+            headers = matrix[0]
+            data_rows = matrix[1:]
+            return pd.DataFrame(data_rows, columns=headers)
+        return pd.DataFrame(matrix)
+    except Exception:
+        return None
+
+
 def try_export_sheet_to_local(url, sheet_id, timeout=600, use_existing_if_exists=True,
                               month_prefix=None, week_range=None):
     """
-    优先使用 AirsheetFile 的 sheet_manager.py 将 Sheet1 导出到本地 CSV。
-    若提供 month_prefix / week_range，则只导出该日期区间的数据（月份前缀 + 周报日期）。
+    使用本 skill 内置的 WPS 客户端将在线表格导出到本地 CSV（写入 pdf-feedback-report/cache）。
+    若提供 month_prefix / week_range，则只导出该日期区间的数据。
     成功返回 (True, csv_path)，失败返回 (False, None)。
     """
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    airsheet_scripts = os.path.join(project_root, "AirsheetFile", "scripts")
-    sheet_manager_py = os.path.join(project_root, "AirsheetFile", "scripts", "sheet_manager.py")
-    airsheet_output_dir = os.path.join(project_root, "AirsheetFile", "output")
-
-    if not os.path.isfile(sheet_manager_py):
-        return False, None
-
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cache_dir = os.path.join(base_dir, "cache")
+    os.makedirs(cache_dir, exist_ok=True)
     file_id = _parse_file_id_from_url(url)
     if not file_id:
         return False, None
-
     if week_range:
         safe_week = week_range.replace("/", "_").replace("\\", "_").replace(" ", "_")
-        expected_csv = os.path.join(airsheet_output_dir, f"{file_id}_sheet_{sheet_id}_{safe_week}.csv")
+        expected_csv = os.path.join(cache_dir, f"{file_id}_sheet_{sheet_id}_{safe_week}.csv")
     else:
-        expected_csv = os.path.join(airsheet_output_dir, f"{file_id}_sheet_{sheet_id}.csv")
-
-    if use_existing_if_exists and not (month_prefix or week_range) and os.path.isfile(expected_csv) and os.path.getsize(expected_csv) > 0:
+        expected_csv = os.path.join(cache_dir, f"{file_id}_sheet_{sheet_id}.csv")
+    if use_existing_if_exists and os.path.isfile(expected_csv) and os.path.getsize(expected_csv) > 0:
         return True, expected_csv
-    if use_existing_if_exists and (month_prefix or week_range) and os.path.isfile(expected_csv) and os.path.getsize(expected_csv) > 0:
-        return True, expected_csv
-
-    cmd = [sys.executable, "sheet_manager.py", "get_range", "--url", url, "--sheet_id", str(sheet_id)]
-    if month_prefix:
-        cmd.extend(["--filter-date-prefix", month_prefix, "--date-column", "月份"])
-    if week_range:
-        cmd.extend(["--filter-week", week_range, "--date-column-week", "周报日期"])
-
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=airsheet_scripts,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if proc.returncode != 0:
-            return False, None
-        if not os.path.isfile(expected_csv) or os.path.getsize(expected_csv) == 0:
-            return False, None
-        return True, expected_csv
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+    df = _fetch_sheet_as_df(url, sheet_id)
+    if df is None or len(df) == 0:
         return False, None
+    # 按日期过滤（与 sheet_manager 行为一致：月份列前缀 + 周报日期）
+    def _find_col(dframe, name, default_name):
+        for c in dframe.columns:
+            if c and str(c).strip() == default_name:
+                return c
+        for c in dframe.columns:
+            if name in str(c):
+                return c
+        return None
+    if month_prefix:
+        col_month = _find_col(df, "月份", "月份")
+        if col_month is not None and col_month in df.columns:
+            df[col_month] = df[col_month].astype(str).str.strip()
+            df = df[df[col_month].str.startswith(str(month_prefix))]
+    if week_range:
+        col_week = _find_col(df, "周报日期", "周报日期")
+        if col_week is not None and col_week in df.columns:
+            df[col_week] = df[col_week].astype(str).str.strip()
+            df = df[df[col_week] == str(week_range)]
+    if len(df) == 0:
+        return False, None
+    try:
+        df.to_csv(expected_csv, index=False, encoding="utf-8-sig")
+    except Exception:
+        return False, None
+    return True, expected_csv
 
 
 def load_df_from_local_csv(csv_path):
@@ -175,121 +240,21 @@ def load_config():
 
 def fetch_online_sheet(url, sheet_id=1):
     """
-    从在线表格读取数据，返回 pandas DataFrame
-    
-    :param url: 在线表格 URL (如 https://365.kdocs.cn/l/xxxxx)
-    :param sheet_id: 工作表 ID (默认为 1，即第一个 Sheet)
-    :return: pandas DataFrame
+    从在线表格读取数据，返回 pandas DataFrame。
+    使用本 skill 内置的 WpsClient（config 中需配置 ACCESS_KEY / SECRET_KEY）。
     """
-    # 动态导入 AirsheetFile 的 WpsClient
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    airsheet_scripts = os.path.join(project_root, 'AirsheetFile', 'scripts')
-    
-    if airsheet_scripts not in sys.path:
-        sys.path.insert(0, airsheet_scripts)
-    
-    try:
-        from wps_client import WpsClient
-    except ImportError as e:
-        print(f"❌ 无法导入 AirsheetFile 模块: {e}")
-        print("请确保 AirsheetFile/scripts/wps_client.py 存在且 AirsheetFile 已正确配置。")
-        sys.exit(1)
-    
-    client = WpsClient()
-    file_id = client.resolve_file_id(url)
-    
+    file_id = _parse_file_id_from_url(url)
     if not file_id:
         print(f"❌ 无法从 URL 解析文件 ID: {url}")
         sys.exit(1)
-    
     print(f"📡 正在从在线表格读取数据...")
     print(f"   文件 ID: {file_id}")
     print(f"   工作表 ID: {sheet_id}")
-    
-    # 1. 探测数据范围
-    probe_row_limit = 10
-    probe_col_limit = 100
-    max_col = 0
-    
-    res = client.get_range_data(file_id, sheet_id, 0, probe_row_limit, 0, probe_col_limit, file_type='auto')
-    if res and res.get('code') == 0:
-        data = res['data'].get('range_data', [])
-        if data:
-            for cell in data:
-                if cell.get('cell_text') or str(cell.get('original_cell_value', '')):
-                    max_col = max(max_col, cell.get('col_from', 0))
-    else:
-        print(f"❌ 探测数据范围失败: {res}")
+    df = _fetch_sheet_as_df(url, sheet_id)
+    if df is None:
+        print("❌ 无法从在线表格读取数据，请检查 config 中是否已配置 WPS OpenAPI（ACCESS_KEY、SECRET_KEY）。")
         sys.exit(1)
-    
-    print(f"   探测到有效列数: {max_col + 1}")
-    
-    # 2. 分页读取所有数据
-    all_cells = []
-    batch_size = 1000
-    current_row = 0
-    
-    while True:
-        res = client.get_range_data(file_id, sheet_id, current_row, current_row + batch_size - 1, 0, max_col, file_type='auto')
-        
-        if res and res.get('code') == 0:
-            batch_data = res['data'].get('range_data', [])
-            
-            has_content = False
-            for cell in batch_data:
-                if cell.get('cell_text') or str(cell.get('original_cell_value', '')):
-                    has_content = True
-                    break
-            
-            if not batch_data or not has_content:
-                break
-                
-            all_cells.extend(batch_data)
-            current_row += batch_size
-            
-            if current_row > 100000:
-                print("⚠️ 达到行数上限 (100,000)，停止读取。")
-                break
-        else:
-            print(f"❌ 读取数据失败: {res}")
-            break
-    
-    print(f"   读取完成，共获取 {len(all_cells)} 个单元格。")
-    
-    if not all_cells:
-        print("❌ 未获取到任何数据")
-        sys.exit(1)
-    
-    # 3. 转换为 DataFrame
-    # 找出边界
-    max_r = max(cell.get('row_from', 0) for cell in all_cells)
-    max_c = max(cell.get('col_from', 0) for cell in all_cells)
-    min_r = min(cell.get('row_from', 0) for cell in all_cells)
-    min_c = min(cell.get('col_from', 0) for cell in all_cells)
-    
-    rows_count = max_r - min_r + 1
-    cols_count = max_c - min_c + 1
-    
-    matrix = [['' for _ in range(cols_count)] for _ in range(rows_count)]
-    
-    for cell in all_cells:
-        r = cell.get('row_from', 0) - min_r
-        c = cell.get('col_from', 0) - min_c
-        val = cell.get('cell_text')
-        orig = cell.get('original_cell_value')
-        final_val = val if val is not None else orig
-        if final_val is None:
-            final_val = ""
-        matrix[r][c] = final_val
-    
-    # 第一行作为表头
-    if rows_count > 1:
-        headers = matrix[0]
-        data_rows = matrix[1:]
-        df = pd.DataFrame(data_rows, columns=headers)
-    else:
-        df = pd.DataFrame(matrix)
-    
+    print(f"   读取完成，共获取 {len(df)} 行数据。")
     print(f"✅ 成功加载 {len(df)} 行数据")
     return df
 
