@@ -5,9 +5,9 @@ version: "2.1.0"
 author: "liufuchen@wps.cn"
 scope: "internal"
 triggers:
-  - "pdf-feedback-report 关注日期：25-2.1-2.4 对比日期25.1.22-1.28"
-  - "report pdf feedback 关注日期：25-2.1-2.4 对比日期25.1.22-1.28"
-  - "generate pdf feedback report 关注日期：25-2.1-2.4 对比日期25.1.22-1.28"
+  - "pdf-feedback-report 关注日期：26-2.1-2.4 对比日期26.1.22-1.28"
+  - "report pdf feedback 2026年2月1日-2026年2月4日"
+  - "generate pdf feedback report 26-2.1-2.4 "
   - "分析用户反馈"
   - "生成用户反馈报告"
 ---

@@ -21,9 +21,9 @@ def main():
                 os.remove(path)
                 removed.append(name)
             except OSError as e:
-                print(f"⚠️ 删除失败 {name}: {e}", file=sys.stderr)
+                print(f"WARN: delete failed {name}: {e}", file=sys.stderr)
     if removed:
-        print(f"✅ 已清理 cache：删除 {len(removed)} 个文件（.txt/.md），仅保留 .csv")
+        print(f"OK: cleaned cache, removed {len(removed)} .txt/.md files, .csv kept")
     return 0
 
 if __name__ == "__main__":
