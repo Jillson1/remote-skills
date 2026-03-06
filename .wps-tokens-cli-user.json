@@ -1,9 +1,0 @@
-{
-  "cli-user": {
-    "access_token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IjNiNTkyYWYwLTk5ODktNDRhOC1hMzQ3LTE4Yzc1MDQ4MTlmNCIsInR5cCI6IkpXVCJ9.eyJhaWQiOjEzODgyNDc2MjQsImF0cCI6InVzZXIiLCJhdHMiOiIyYWV5MTFEIiwiYnVpIjpmYWxzZSwiY2lkIjo0MTAwMDIwNywiY2xpIjoiQUsyMDI2MDIwNUtHUkZXWCIsImV4cCI6MTc3MjYxNjQ0NywianN0IjpmYWxzZSwic3BpIjoxODAyNjc4OTQwfQ._WbtW6ZhdnaoI3en7IEUCgsJWx8-d7kCwXQqCJV6GtefmIA_2oY9GxwvK8_nOITxvufP4cWXEfMT_YnaQw6rDA",
-    "refresh_token": "kso_rt_VSnCsZbVcP5K221DlxPbEfI-mblxtDOIlZgUQ1-u5vo.qVwZ9CSZeHS-vYrp6xWdcUHOD4MvPLi65NbMZ4W83FA.VeXk003",
-    "expires_in": 7199,
-    "token_type": "bearer",
-    "expiresAt": 1772616445619
-  }
-}
